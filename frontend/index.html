@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Commerce Microservices Dashboard</title>
+    <!-- Modern Premium Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Modern Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background glowing orbs for Glassmorphism depth -->
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+
+    <!-- Beautiful Authentic Auth Portal Overlay -->
+    <div class="auth-overlay-portal" id="authPortalOverlay">
+        <div class="auth-card-glass">
+            <div class="auth-brand">
+                <i class="fa-solid fa-bag-shopping auth-brand-icon"></i>
+                <h2>ApexStore Portal</h2>
+                <p>E-Commerce Microservices Stack</p>
+            </div>
+            
+            <!-- VIEW 1: LOGIN -->
+            <div class="auth-view" id="authViewLogin">
+                <h3>Welcome Back</h3>
+                <p class="auth-view-sub">Sign in to access your storefront session.</p>
+                
+                <form id="loginForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="loginUsername"><i class="fa-solid fa-user"></i> Username or Email</label>
+                        <input type="text" id="loginUsername" placeholder="alex_dev or alex.dev@example.com" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword"><i class="fa-solid fa-lock"></i> Password</label>
+                        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth" id="loginSubmitBtn">
+                        <span>Log In</span> <i class="fa-solid fa-right-to-bracket"></i>
+                    </button>
+                </form>
+                
+                <div class="auth-footer-links">
+                    <button class="link-btn" onclick="switchAuthView('forgot')">Forgot Password?</button>
+                    <span>•</span>
+                    <button class="link-btn" onclick="switchAuthView('register')">Create Account</button>
+                </div>
+            </div>
+            
+            <!-- VIEW 2: REGISTER -->
+            <div class="auth-view" id="authViewRegister" style="display: none;">
+                <h3>Register Account</h3>
+                <p class="auth-view-sub">Join the premium microservices ecosystem.</p>
+                
+                <form id="registerForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="regEmail"><i class="fa-solid fa-envelope"></i> Email Address</label>
+                        <input type="email" id="regEmail" placeholder="yourname@example.com" required autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="regUsername"><i class="fa-solid fa-user-tag"></i> Username</label>
+                        <input type="text" id="regUsername" placeholder="e.g. dev_pro" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="regFullName"><i class="fa-solid fa-id-card"></i> Full Name</label>
+                        <input type="text" id="regFullName" placeholder="e.g. Alexis Dev" required autocomplete="name">
+                    </div>
+                    <div class="form-group">
+                        <label for="regPassword"><i class="fa-solid fa-lock"></i> Password</label>
+                        <input type="password" id="regPassword" placeholder="••••••••" required autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth" id="registerSubmitBtn">
+                        <span>Register</span> <i class="fa-solid fa-user-plus"></i>
+                    </button>
+                </form>
+                
+                <div class="auth-footer-links">
+                    <button class="link-btn" onclick="switchAuthView('login')">Already have an account? Log In</button>
+                </div>
+            </div>
+            
+            <!-- VIEW 3: FORGOT PASSWORD -->
+            <div class="auth-view" id="authViewForgot" style="display: none;">
+                <h3>Forgot Password</h3>
+                <p class="auth-view-sub">Enter your email and we'll dispatch reset instructions.</p>
+                
+                <form id="forgotForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="forgotEmail"><i class="fa-solid fa-envelope"></i> Email Address</label>
+                        <input type="email" id="forgotEmail" placeholder="yourname@example.com" required autocomplete="email">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth" id="forgotSubmitBtn">
+                        <span>Send Instructions</span> <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+                
+                <div class="auth-footer-links">
+                    <button class="link-btn" onclick="switchAuthView('login')">Back to Log In</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container" id="appMainContainer" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-bag-shopping brand-icon"></i>
+                <div class="brand-text">
+                    <h1>ApexStore</h1>
+                    <span>Microservices Stack</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="store">
+                    <i class="fa-solid fa-store"></i> Storefront
+                </button>
+                <button class="nav-item" data-tab="orders">
+                    <i class="fa-solid fa-box-open"></i> Live Orders
+                </button>
+                <button class="nav-item" data-tab="notifications">
+                    <i class="fa-solid fa-bell"></i> Notifications
+                </button>
+                <button class="nav-item" data-tab="status">
+                    <i class="fa-solid fa-server"></i> API Gateway Status
+                </button>
+            </nav>
+
+            <!-- Active User Profile Box -->
+            <div class="active-user-box" id="sidebarProfileBox" style="display: none;">
+                <div class="user-box-title">Active Session</div>
+                <div id="activeUserBadge" class="user-badge">
+                    <div class="user-avatar"><i class="fa-solid fa-user-astronaut"></i></div>
+                    <div class="user-info">
+                        <span id="activeUserName" class="user-name">Loading...</span>
+                        <span id="activeUserEmail" class="user-email">...</span>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-logout" id="logoutBtn" style="width: 100%; margin-top: 16px; justify-content: center; font-size: 12px; padding: 8px;">
+                    <i class="fa-solid fa-right-from-bracket"></i> Log Out
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header bar -->
+            <header class="top-bar">
+                <div class="page-title">
+                    <h2 id="currentTabTitle">Storefront</h2>
+                    <p id="currentTabSub">Browse and purchase premium pre-seeded electronic catalog items.</p>
+                </div>
+
+                <div class="top-bar-actions">
+                    <!-- Quick health status -->
+                    <div class="system-health-pill">
+                        <span class="health-pulse pulse-green"></span>
+                        <span class="health-text">Core System Online</span>
+                    </div>
+                    <!-- Cart trigger button -->
+                    <button class="cart-trigger" id="cartTrigger">
+                        <i class="fa-solid fa-cart-shopping"></i>
+                        <span class="cart-count" id="cartCountBadge">0</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tab Content: Storefront -->
+            <section class="tab-pane active" id="tab-store">
+                <!-- Banner Slider mockup -->
+                <div class="promo-banner">
+                    <div class="banner-overlay"></div>
+                    <div class="banner-content">
+                        <span class="badge">PROMO</span>
+                        <h3>Upgrade Your Workspace</h3>
+                        <p>Explore high-fidelity displays, mechanical keyboards, and precision accessories.</p>
+                    </div>
+                </div>
+
+                <!-- Products Grid -->
+                <div class="section-header">
+                    <h3>Premium Catalog</h3>
+                    <div class="category-filters">
+                        <button class="filter-btn active" data-category="all">All Items</button>
+                        <button class="filter-btn" data-category="Electronics">Electronics</button>
+                        <button class="filter-btn" data-category="Accessories">Accessories</button>
+                        <button class="filter-btn" data-category="Audio">Audio</button>
+                    </div>
+                </div>
+
+                <div class="product-grid" id="productGrid">
+                    <!-- Products dynamically rendered by JS -->
+                    <div class="loading-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <p>Loading catalog items...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: Live Orders -->
+            <section class="tab-pane" id="tab-orders">
+                <div class="section-header">
+                    <h3>Recent Transactions & Statuses</h3>
+                    <button class="btn btn-secondary" id="refreshOrdersBtn">
+                        <i class="fa-solid fa-arrows-rotate"></i> Sync Orders
+                    </button>
+                </div>
+
+                <div class="orders-container" id="ordersContainer">
+                    <!-- Orders dynamically rendered by JS -->
+                    <div class="empty-state">
+                        <i class="fa-solid fa-box-open empty-icon"></i>
+                        <h4>No orders placed yet</h4>
+                        <p>Browse the catalog and add premium devices to your cart to check out.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: Notifications -->
+            <section class="tab-pane" id="tab-notifications">
+                <div class="section-header">
+                    <h3>Dispatched System Events</h3>
+                    <button class="btn btn-secondary" id="refreshNotificationsBtn">
+                        <i class="fa-solid fa-arrows-rotate"></i> Sync Logs
+                    </button>
+                </div>
+
+                <div class="notifications-list" id="notificationsList">
+                    <!-- Notifications dynamically rendered by JS -->
+                    <div class="empty-state">
+                        <i class="fa-solid fa-envelope-openempty empty-icon"></i>
+                        <h4>Notification log is clean</h4>
+                        <p>System events, SMS triggers, and spatial emails will show up here after orders are placed.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: API Status -->
+            <section class="tab-pane" id="tab-status">
+                <div class="section-header">
+                    <h3>Microservice Endpoint Health</h3>
+                    <button class="btn btn-secondary" id="pingHealthBtn">
+                        <i class="fa-solid fa-heartbeat"></i> Run Global Ping
+                    </button>
+                </div>
+
+                <div class="status-grid">
+                    <!-- Service 1: User Service -->
+                    <div class="status-card" id="status-user">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-user-shield icon-user"></i>
+                                <div>
+                                    <h4>User Service</h4>
+                                    <span>Port: 8001 | /api/v1/users</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-pending">Checking</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Health URL</span><a href="http://localhost:8001/healthz" target="_blank">/healthz</a></div>
+                            <div class="detail-row"><span>Readiness</span><span class="readiness-text">--</span></div>
+                            <div class="detail-row"><span>Version</span><span class="version-text">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Service 2: Product Service -->
+                    <div class="status-card" id="status-product">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-boxes-packing icon-product"></i>
+                                <div>
+                                    <h4>Product Catalog</h4>
+                                    <span>Port: 8002 | /api/v1/products</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-pending">Checking</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Health URL</span><a href="http://localhost:8002/healthz" target="_blank">/healthz</a></div>
+                            <div class="detail-row"><span>Readiness</span><span class="readiness-text">--</span></div>
+                            <div class="detail-row"><span>Version</span><span class="version-text">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Service 3: Order Service -->
+                    <div class="status-card" id="status-order">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-cart-flatbed-suitcases icon-order"></i>
+                                <div>
+                                    <h4>Order Manager</h4>
+                                    <span>Port: 8003 | /api/v1/orders</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-pending">Checking</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Health URL</span><a href="http://localhost:8003/healthz" target="_blank">/healthz</a></div>
+                            <div class="detail-row"><span>Readiness</span><span class="readiness-text">--</span></div>
+                            <div class="detail-row"><span>Version</span><span class="version-text">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Service 4: Payment Service -->
+                    <div class="status-card" id="status-payment">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-credit-card icon-payment"></i>
+                                <div>
+                                    <h4>Payment Processor</h4>
+                                    <span>Port: 8004 | /api/v1/payments</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-pending">Checking</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Health URL</span><a href="http://localhost:8004/healthz" target="_blank">/healthz</a></div>
+                            <div class="detail-row"><span>Readiness</span><span class="readiness-text">--</span></div>
+                            <div class="detail-row"><span>Version</span><span class="version-text">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Service 5: Notification Service -->
+                    <div class="status-card" id="status-notification">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-envelopes-bulk icon-notification"></i>
+                                <div>
+                                    <h4>Notification Sender</h4>
+                                    <span>Port: 8005 | /api/v1/notifications</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-pending">Checking</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Health URL</span><a href="http://localhost:8005/healthz" target="_blank">/healthz</a></div>
+                            <div class="detail-row"><span>Readiness</span><span class="readiness-text">--</span></div>
+                            <div class="detail-row"><span>Version</span><span class="version-text">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Database Node (Postgres) -->
+                    <div class="status-card" id="status-postgres">
+                        <div class="status-card-header">
+                            <div class="service-name">
+                                <i class="fa-solid fa-database icon-database"></i>
+                                <div>
+                                    <h4>PostgreSQL 16</h4>
+                                    <span>Port: 5432 | Internal DB Cluster</span>
+                                </div>
+                            </div>
+                            <span class="status-indicator-badge badge-online">Online</span>
+                        </div>
+                        <div class="status-details">
+                            <div class="detail-row"><span>Container Name</span><span>ecommerce-postgres</span></div>
+                            <div class="detail-row"><span>Volume Persistence</span><span class="badge-active">project_postgres_data</span></div>
+                            <div class="detail-row"><span>Total Seeded DBs</span><span>5 Databases</span></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Slide-out Shopping Cart Panel -->
+        <div class="cart-overlay" id="cartOverlay"></div>
+        <aside class="cart-panel" id="cartPanel">
+            <div class="cart-header">
+                <h3><i class="fa-solid fa-cart-shopping"></i> Shopping Cart</h3>
+                <button class="cart-close" id="cartClose"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="cart-items-list" id="cartItemsList">
+                <!-- Dynamically rendered cart items -->
+                <div class="cart-empty-message">
+                    <i class="fa-solid fa-cart-flatbed empty-icon"></i>
+                    <p>Your cart is empty.</p>
+                </div>
+            </div>
+
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal</span>
+                    <span id="cartSubtotal">$0.00</span>
+                </div>
+                <div class="summary-row">
+                    <span>Sales Tax</span>
+                    <span>$0.00</span>
+                </div>
+                <hr>
+                <div class="summary-row total-row">
+                    <span>Total</span>
+                    <span id="cartTotal">$0.00</span>
+                </div>
+
+                <button class="btn btn-primary btn-checkout" id="checkoutBtn" disabled>
+                    <i class="fa-solid fa-credit-card"></i> Proceed to Checkout
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Notification Toast Popup -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -12,6 +12,12 @@ import os
 import logging
 from contextlib import asynccontextmanager
 import asyncpg
+import hashlib
+import httpx
+
+# Helper: Hash passwords with SHA-256
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -28,8 +34,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting User Service...")
     app.state.db_pool = await asyncpg.create_pool(
         DATABASE_URL,
-        min_size=5,
-        max_size=20,
+        min_size=1,
+        max_size=5,
         command_timeout=60,
     )
     # Create tables if not exist
@@ -95,6 +101,15 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
 
 
+class LoginRequest(BaseModel):
+    username_or_email: str
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
@@ -132,6 +147,7 @@ async def readiness_check():
 async def create_user(user: UserCreate):
     """Create a new user account."""
     try:
+        hashed = hash_password(user.password)
         async with app.state.db_pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -139,7 +155,7 @@ async def create_user(user: UserCreate):
                 VALUES ($1, $2, $3, $4)
                 RETURNING id, email, username, full_name, is_active, is_verified, created_at
                 """,
-                user.email, user.username, user.full_name, user.password  # Hash in production
+                user.email, user.username, user.full_name, hashed
             )
             return UserResponse(**dict(row))
     except asyncpg.UniqueViolationError:
@@ -200,3 +216,60 @@ async def delete_user(user_id: int):
         )
         if result == "UPDATE 0":
             raise HTTPException(status_code=404, detail="User not found")
+
+
+@app.post("/login", response_model=UserResponse, tags=["auth"])
+async def login(credentials: LoginRequest):
+    """Authenticate a user."""
+    hashed = hash_password(credentials.password)
+    async with app.state.db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, email, username, full_name, is_active, is_verified, created_at
+            FROM users
+            WHERE (email = $1 OR username = $1) AND hashed_password = $2
+            """,
+            credentials.username_or_email, hashed
+        )
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid username/email or password")
+        
+        user_info = dict(row)
+        if not user_info["is_active"]:
+            raise HTTPException(status_code=403, detail="User account is deactivated")
+            
+        return UserResponse(**user_info)
+
+
+NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8000")
+
+@app.post("/forgot-password", tags=["auth"])
+async def forgot_password(req: ForgotPasswordRequest):
+    """Generate password reset token and dispatch microservice notification email."""
+    async with app.state.db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id, username, email FROM users WHERE email = $1 AND is_active = TRUE", req.email)
+        if not row:
+            raise HTTPException(status_code=404, detail="User with this email not found")
+        
+        user_data = dict(row)
+        # Generate dummy reset token
+        reset_token = f"rst_{hashlib.sha256(f'{req.email}-{datetime.utcnow()}'.encode()).hexdigest()[:16]}"
+        
+        # Microservice communication: call notification-service via HTTP
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{NOTIFICATION_SERVICE_URL}/",
+                    json={
+                        "user_id": user_data["id"],
+                        "type": "email",
+                        "subject": "Password Reset Instructions",
+                        "message": f"Hello {user_data['username']}! We received a password reset request. Click this link to reset your credentials: http://localhost:8081/?action=reset-password&token={reset_token}",
+                        "metadata": {"reset_token": reset_token}
+                    },
+                    timeout=5.0
+                )
+        except Exception as e:
+            logger.error(f"Failed to dispatch reset notification: {e}")
+            
+        return {"message": "Password reset instructions sent to your email", "token": reset_token}

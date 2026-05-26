@@ -30,7 +30,7 @@ class OrderStatus(str, Enum):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20, command_timeout=60)
+    app.state.db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, command_timeout=60)
     async with app.state.db_pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS orders (
