@@ -1,0 +1,31 @@
+name: CI - order-service
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/order-service/**"
+      - ".github/workflows/ci-order-service.yaml"
+      - ".github/workflows/ci-shared-template.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/order-service/**"
+
+concurrency:
+  group: ci-order-service-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+  attestations: write
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-shared-template.yaml
+    with:
+      service_name: order-service
+    secrets:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}

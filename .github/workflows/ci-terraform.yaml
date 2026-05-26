@@ -1,0 +1,178 @@
+################################################################################
+# Terraform CI/CD Workflow - Infrastructure as Code Security
+# Runs: tfsec, checkov, fmt check, validate, plan
+################################################################################
+
+name: CI - Terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/ci-terraform.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write    # OIDC for AWS
+  contents: read
+  pull-requests: write
+  security-events: write
+
+env:
+  TF_VERSION: "1.10.0"
+  AWS_REGION: "ap-south-1"
+
+jobs:
+  ############################################################################
+  # Stage 1: Format & Validate
+  ############################################################################
+  format-validate:
+    name: "📐 Format & Validate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Validate (Dev)
+        run: |
+          cd terraform/environments/dev
+          terraform init -backend=false
+          terraform validate
+
+      - name: Terraform Validate (Staging)
+        run: |
+          cd terraform/environments/staging
+          terraform init -backend=false
+          terraform validate
+
+      - name: Terraform Validate (Production)
+        run: |
+          cd terraform/environments/production
+          terraform init -backend=false
+          terraform validate
+
+  ############################################################################
+  # Stage 2: IaC Security Scanning
+  ############################################################################
+  iac-security:
+    name: "🛡️ IaC Security Scan"
+    runs-on: ubuntu-latest
+    needs: format-validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # tfsec - Terraform Security Scanner
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform/
+          format: sarif
+          soft_fail: true
+
+      - name: Upload tfsec SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: tfsec
+
+      # Checkov - Policy-as-Code Scanner
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,checkov-results.sarif
+          soft_fail: true
+          skip_check: CKV_AWS_144,CKV_AWS_145 # Skip cross-region replication checks
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov
+
+  ############################################################################
+  # Stage 3: Terraform Plan (PRs only)
+  ############################################################################
+  plan:
+    name: "📋 Terraform Plan"
+    runs-on: ubuntu-latest
+    needs: iac-security
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        environment: [dev, staging]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          cd terraform/environments/${{ matrix.environment }}
+          terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd terraform/environments/${{ matrix.environment }}
+          terraform plan -no-color -input=false 2>&1 | tee plan-output.txt
+        continue-on-error: true
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/environments/${{ matrix.environment }}/plan-output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n... (truncated)' : plan;
+
+            const body = `### Terraform Plan - \`${{ matrix.environment }}\`
+
+            <details>
+            <summary>Show Plan Output</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+
+            </details>
+
+            **Plan Status:** ${{ steps.plan.outcome == 'success' && '✅ Success' || '❌ Failed' }}`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

@@ -1,0 +1,20 @@
+################################################################################
+# HTTPRoute for ArgoCD - Accessed via Gateway API (NOT LoadBalancer)
+# This saves ~$18/month by not creating a separate NLB
+################################################################################
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  parentRefs:
+    - name: ecommerce-gateway
+      namespace: ecommerce
+  hostnames:
+    - "argocd.yourdomain.com"
+  rules:
+    - backendRefs:
+        - name: argocd-server
+          port: 80
