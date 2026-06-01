@@ -42,6 +42,11 @@ spec:
             - name: http
               containerPort: {{ .Values.container.port }}
               protocol: TCP
+            {{- if .Values.grpc.enabled }}
+            - name: grpc
+              containerPort: {{ .Values.container.grpcPort }}
+              protocol: TCP
+            {{- end }}
           {{- with .Values.container.env }}
           env:
             {{- toYaml . | nindent 12 }}

@@ -23,7 +23,7 @@ on:
 
 permissions:
   id-token: write        # OIDC token for AWS + cosign keyless signing
-  contents: read
+  contents: write        # Push updated Helm values back to repo
   security-events: write # Upload SARIF results to Security tab
   attestations: write    # Image attestation / provenance
 

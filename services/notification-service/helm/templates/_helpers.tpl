@@ -1,4 +1,4 @@
-{{/*
+helm template my-release ./services/notification-service/helm --debug --values ./values.yaml{{/*
 Expand the name of the chart.
 */}}
 {{- define "chart.name" -}}

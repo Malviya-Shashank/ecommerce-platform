@@ -4,10 +4,15 @@ variable "project_name" {
 variable "environment" {
   type = string
 }
-variable "enable_shield" {
-  description = "Enable Shield Advanced ($3000/month)"
-  type        = bool
-  default     = false
+variable "shield_tier" {
+  description = "Shield tier: 'standard' (free, automatic) or 'advanced' ($3000/month)"
+  type        = string
+  default     = "standard"
+
+  validation {
+    condition     = contains(["standard", "advanced"], var.shield_tier)
+    error_message = "shield_tier must be 'standard' or 'advanced'."
+  }
 }
 variable "cloudfront_distribution_arn" {
   type    = string

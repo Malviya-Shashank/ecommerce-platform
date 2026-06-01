@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package ecommerce.product;
+
+// ProductService handles internal product queries from other microservices.
+// Called by: order-service (stock validation before checkout)
+service ProductService {
+  // Get a single product by ID
+  rpc GetProduct (ProductRequest) returns (ProductResponse);
+
+  // Check if sufficient stock is available for a product
+  rpc CheckStock (StockCheckRequest) returns (StockCheckResponse);
+
+  // Deduct stock after successful order placement
+  rpc DeductStock (DeductStockRequest) returns (DeductStockResponse);
+}
+
+message ProductRequest {
+  int32 product_id = 1;
+}
+
+message ProductResponse {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  string price = 4;           // Decimal as string for precision
+  string sku = 5;
+  string category = 6;
+  int32 stock_quantity = 7;
+  bool is_active = 8;
+}
+
+message StockCheckRequest {
+  int32 product_id = 1;
+  int32 requested_quantity = 2;
+}
+
+message StockCheckResponse {
+  bool available = 1;
+  int32 current_stock = 2;
+}
+
+message DeductStockRequest {
+  int32 product_id = 1;
+  int32 quantity = 2;
+}
+
+message DeductStockResponse {
+  bool success = 1;
+  int32 remaining_stock = 2;
+}

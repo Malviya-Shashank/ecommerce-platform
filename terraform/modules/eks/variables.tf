@@ -131,3 +131,13 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+################################################################################
+# GitHub Actions OIDC Role (for EKS Access Entry)
+################################################################################
+
+variable "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC (granted cluster-admin via EKS Access Entry)"
+  type        = string
+  default     = ""
+}

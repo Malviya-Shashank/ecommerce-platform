@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package ecommerce.notification;
+
+// NotificationService handles internal service-to-service notification dispatch.
+// Called by: user-service (password reset), order-service (order updates),
+//            payment-service (payment confirmations)
+service NotificationService {
+  // Send a notification to a user (email, SMS, or push)
+  rpc SendNotification (NotificationRequest) returns (NotificationResponse);
+
+  // Batch send notifications (future use)
+  rpc SendBulkNotification (BulkNotificationRequest) returns (BulkNotificationResponse);
+}
+
+message NotificationRequest {
+  int32 user_id = 1;
+  string type = 2;                     // "email", "sms", "push"
+  string subject = 3;
+  string message = 4;
+  map<string, string> metadata = 5;    // Extra context (e.g., reset_token, order_id)
+}
+
+message NotificationResponse {
+  int32 id = 1;
+  string status = 2;                   // "sent", "failed", "pending"
+  string created_at = 3;
+}
+
+message BulkNotificationRequest {
+  repeated NotificationRequest notifications = 1;
+}
+
+message BulkNotificationResponse {
+  int32 total_sent = 1;
+  int32 total_failed = 2;
+}

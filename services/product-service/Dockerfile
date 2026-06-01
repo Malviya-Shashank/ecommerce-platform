@@ -1,7 +1,11 @@
 ################################################################################
-# Multi-stage Dockerfile for FastAPI Microservice
+# Multi-stage Dockerfile for FastAPI + gRPC Microservice
 # Stage 1: Builder - install dependencies
 # Stage 2: Runtime - minimal production image
+#
+# Ports:
+#   8000  - FastAPI REST API (external/client-facing)
+#   50051 - gRPC server (internal service-to-service)
 ################################################################################
 
 # ── Builder Stage ────────────────────────────────────────────────────────────
@@ -29,7 +33,7 @@ WORKDIR /app
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application code
+# Copy application code and generated gRPC stubs
 COPY src/ ./src/
 
 # Set ownership
@@ -40,13 +44,14 @@ USER appuser
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8000
+    PORT=8000 \
+    GRPC_PORT=50051
 
-EXPOSE 8000
+EXPOSE 8000 50051
 
-# Health check
+# Health check (FastAPI)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" || exit 1
 
-# Run with uvicorn
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--access-log"]
+# Run with uvicorn (gRPC server starts inside the FastAPI lifespan)
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--access-log"]

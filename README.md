@@ -1,43 +1,94 @@
 # 🛒 E-Commerce Platform - Production Microservices
 
-Production-grade e-commerce platform with 5 microservices running on AWS EKS, managed by Terraform IaC, GitHub Actions CI, and ArgoCD GitOps CD.
+Production-grade e-commerce platform with 5 microservices running on AWS EKS, managed by Terraform IaC, GitHub Actions CI/CD, and ArgoCD GitOps CD. **Fully automated: push to `main` creates the entire infrastructure and deploys all applications.**
 
 ## Architecture
 
-```
-Internet → Route53 → CloudFront (WAF + Shield) → ALB
-  → Gateway API → HTTPRoutes → Microservices
+```mermaid
+graph LR
+    Client["🌐 Browser"] -->|HTTPS| ALB["ALB<br/>(TLS Termination)"]
 
-ArgoCD:    argocd.domain.com  → Gateway API → ArgoCD Server (ClusterIP)
-Grafana:   grafana.domain.com → Gateway API → Grafana (ClusterIP)
-API:       api.domain.com     → Gateway API → 5 Microservices
+    subgraph "EKS Cluster"
+        ALB --> GW["Gateway API"]
+        GW --> US["User Service<br/>:8000"]
+        GW --> PS["Product Service<br/>:8000 | :50051 gRPC"]
+        GW --> OS["Order Service<br/>:8000"]
+        GW --> PayS["Payment Service<br/>:8000"]
+        GW --> NS["Notification Service<br/>:8000 | :50051 gRPC"]
+
+        US -.->|gRPC| NS
+        OS -.->|gRPC| NS
+        OS -.->|gRPC| PS
+        PayS -.->|gRPC| NS
+    end
+
+    subgraph "Data Layer"
+        US --> DB1[("User DB")]
+        PS --> DB2[("Product DB")]
+        OS --> DB3[("Order DB")]
+        PayS --> DB4[("Payment DB")]
+        NS --> DB5[("Notification DB")]
+    end
+
+    style ALB fill:#8b5cf6,stroke:#fff,color:#fff
+    style GW fill:#3b82f6,stroke:#fff,color:#fff
+```
+
+### Dev Environment (Cost-Optimized)
+```
+Internet → sslip.io (free DNS) → ALB (HTTPS, self-signed TLS) → Gateway API → Microservices
+  ├── ArgoCD:   https://ecommerce-api-<IP>.sslip.io/argocd
+  ├── Grafana:  https://ecommerce-api-<IP>.sslip.io/grafana
+  └── API:      https://ecommerce-api-<IP>.sslip.io/api/v1/{service}
+```
+
+### Production Environment
+```
+Internet → Route53 → CloudFront (WAF + Shield) → ALB (HTTPS, ACM cert) → Gateway API → Microservices
+```
+
+## CI/CD Pipeline (Fully Automated)
+
+```mermaid
+flowchart LR
+    Push["git push"] --> TF{"terraform/**"}
+    Push --> SVC{"services/**"}
+
+    TF --> Validate["Format & Validate"] --> Scan["Security Scan"] --> Apply["Terraform Apply"] --> Boot["Bootstrap ArgoCD"]
+    SVC --> Lint["Lint & Test"] --> SAST["SAST Scan"] --> Docker["Docker Build + Trivy"] --> ECR["Push ECR"] --> Argo["ArgoCD Sync"]
+
+    style Push fill:#3b82f6,stroke:#fff,color:#fff
+    style Apply fill:#10b981,stroke:#fff,color:#fff
+    style Argo fill:#8b5cf6,stroke:#fff,color:#fff
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Cloud** | AWS (EKS, RDS, CloudFront, WAF, Shield, Route53, ECR) |
+| **Cloud** | AWS (EKS, RDS, WAF, Shield Standard, ECR, ACM, S3, KMS) |
 | **IaC** | Terraform with modular architecture |
 | **Orchestration** | Kubernetes (EKS v1.31) |
-| **Package Manager** | Helm 3 |
-| **CI** | GitHub Actions (OIDC auth, Trivy scanning) |
+| **Inter-Service Comm** | gRPC (protobuf, port 50051) |
+| **External API** | Python/FastAPI (REST, port 8000) |
+| **CI/CD** | GitHub Actions (OIDC auth, auto-apply, Trivy scanning) |
 | **CD** | ArgoCD (GitOps, App-of-Apps pattern) |
-| **Monitoring** | Prometheus + Grafana |
-| **Logging** | Loki + Promtail (S3-backed) |
+| **Monitoring** | Prometheus + Grafana (Helm via Terraform) |
+| **Logging** | Loki + Promtail (S3-backed, Helm via Terraform) |
 | **API Gateway** | Kubernetes Gateway API |
-| **Services** | Python/FastAPI |
-| **Database** | PostgreSQL 16 (RDS Multi-AZ) |
+| **Database** | PostgreSQL 16 (RDS) |
+| **TLS** | ACM (self-signed for dev, DNS-validated for prod) |
+| **Domain** | sslip.io (dev, free) / Route53 (prod) |
 
 ## Microservices
 
-| Service | Path | Description |
-|---------|------|-------------|
-| user-service | `/api/v1/users` | Registration, auth, profiles |
-| product-service | `/api/v1/products` | Catalog, inventory, search |
-| order-service | `/api/v1/orders` | Cart, checkout, orders |
-| payment-service | `/api/v1/payments` | Payment processing, refunds |
-| notification-service | `/api/v1/notifications` | Email, SMS, push |
+| Service | External API | gRPC Server | gRPC Client Of | Description |
+|---------|-------------|-------------|-----------------|-------------|
+| user-service | `/api/v1/users` | — | notification | Registration, auth, profiles |
+| product-service | `/api/v1/products` | `:50051` | — | Catalog, inventory, stock |
+| order-service | `/api/v1/orders` | — | product, notification | Cart, checkout, orders |
+| payment-service | `/api/v1/payments` | — | notification | Payment processing, refunds |
+| notification-service | `/api/v1/notifications` | `:50051` | — | Email, SMS, push dispatch |
 
 ## Project Structure
 
@@ -46,100 +97,78 @@ API:       api.domain.com     → Gateway API → 5 Microservices
 │   ├── modules/                # Reusable Terraform modules
 │   │   ├── vpc/                # VPC, subnets, NAT
 │   │   ├── eks/                # EKS cluster, node groups
-│   │   ├── rds/                # PostgreSQL Multi-AZ
-│   │   ├── route53/            # DNS
-│   │   ├── cloudfront/         # CDN + origin protection
+│   │   ├── rds/                # PostgreSQL
+│   │   ├── acm-self-signed/    # Self-signed TLS cert (dev)
+│   │   ├── acm/                # DNS-validated cert (prod)
 │   │   ├── waf/                # WAF v2 rules
-│   │   ├── shield/             # DDoS protection
-│   │   ├── acm/                # TLS certificates
+│   │   ├── shield/             # Shield Standard/Advanced
 │   │   ├── irsa/               # IAM Roles for Service Accounts
 │   │   ├── security-groups/    # Network security
-│   │   └── helm-releases/      # Platform services via Helm
+│   │   ├── github-oidc/        # GitHub Actions OIDC
+│   │   └── helm-releases/      # Platform services (ArgoCD, Prometheus, etc.)
 │   └── environments/           # Per-environment configs
-│       ├── dev/
+│       ├── dev/                # sslip.io + self-signed TLS + t3.medium SPOT
 │       ├── staging/
 │       └── production/
 ├── services/                   # Microservice source code
-│   ├── user-service/
-│   ├── product-service/
-│   ├── order-service/
-│   ├── payment-service/
-│   └── notification-service/
-├── kubernetes/                 # K8s manifests (Gateway API)
+│   ├── proto/                  # gRPC proto definitions + gen script
+│   ├── user-service/           # FastAPI + gRPC client
+│   ├── product-service/        # FastAPI + gRPC server
+│   ├── order-service/          # FastAPI + gRPC client
+│   ├── payment-service/        # FastAPI + gRPC client
+│   └── notification-service/   # FastAPI + gRPC server
+├── kubernetes/                 # K8s manifests (Gateway API, HTTPRoutes)
 ├── argocd/                     # ArgoCD application manifests
-├── .github/workflows/          # CI pipelines
-└── scripts/                    # Setup/teardown scripts
+├── .github/workflows/          # CI/CD pipelines
+└── scripts/                    # Setup/teardown/sslip-domain scripts
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- AWS CLI configured with appropriate permissions
-- Terraform >= 1.9.0
-- kubectl
-- Helm 3
-- Docker
+- AWS Account with appropriate permissions
+- GitHub repository with secrets configured (`AWS_ROLE_ARN`, `AWS_REGION`)
+- Terraform S3 state bucket created (one-time)
 
-### 1. Setup Backend
+### 1. One-Time Setup
 ```bash
 chmod +x scripts/setup.sh
 ./scripts/setup.sh ecommerce ap-south-1
 ```
 
-### 2. Configure
+### 2. Deploy Infrastructure
 ```bash
-cd terraform/environments/production
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
+cd terraform/environments/dev
+terraform init && terraform plan -out=tfplan && terraform apply tfplan
 ```
 
-### 3. Deploy Infrastructure
+### 3. Configure sslip.io + TLS
 ```bash
-terraform init
-terraform plan
-terraform apply
+./scripts/setup-sslip-domain.sh
 ```
 
-### 4. Configure kubectl
+### 4. Push to Automate 🚀
 ```bash
-aws eks update-kubeconfig --name ecommerce-production-eks --region ap-south-1
-```
-
-### 5. Apply Gateway API Routes
-```bash
-kubectl apply -f kubernetes/base/
-```
-
-### 6. Bootstrap ArgoCD
-```bash
-kubectl apply -f argocd/projects/
-kubectl apply -f argocd/app-of-apps.yaml
+git push origin main
 ```
 
 ## Environments
 
-| Environment | VPC CIDR | Nodes | RDS | NAT |
-|------------|----------|-------|-----|-----|
-| dev | 10.1.0.0/16 | 2× SPOT m6i.large | Single-AZ t4g.medium | Single |
-| staging | 10.2.0.0/16 | 2× ON_DEMAND m6i.large | Multi-AZ t4g.large | Single |
-| production | 10.0.0.0/16 | 3× ON_DEMAND m6i.xlarge | Multi-AZ r6g.large | HA (per AZ) |
-
-## Cost Optimization
-
-- ✅ **Single ALB** shared via Gateway API (saves ~$36/month vs 3 separate LBs)
-- ✅ **ArgoCD & Grafana** via ClusterIP + HTTPRoute (no extra NLBs)
-- ✅ **Loki S3 storage** with lifecycle (Standard → IA → Glacier)
-- ✅ **VPC endpoints** for ECR/STS (reduces NAT traffic costs)
-- ✅ **SPOT instances** for dev environment
-- ✅ **Shield Advanced** opt-in only (default: standard)
+| Environment | Nodes | TLS | Domain | Shield | Estimated Cost |
+|------------|-------|-----|--------|--------|---------------|
+| dev | 2× t3.medium SPOT | Self-signed ACM | sslip.io (free) | Standard (free) | ~$110/mo |
+| staging | 2× m6i.large ON_DEMAND | ACM DNS-validated | Custom domain | Standard (free) | ~$250/mo |
+| production | 3× m6i.xlarge ON_DEMAND | ACM DNS-validated | Custom domain | Advanced ($3K/mo) | ~$3,700/mo |
 
 ## Security
 
-- 🔐 KMS encryption for EKS secrets and RDS
-- 🔐 IRSA (no AWS credentials in pods)
-- 🔐 WAF with OWASP, SQLi, rate limiting rules
-- 🔐 CloudFront origin header validation
-- 🔐 Network policies per service
-- 🔐 GitHub OIDC (no long-lived IAM keys)
-- 🔐 External Secrets Operator (no secrets in Git)
-- 🔐 Non-root containers with read-only filesystem
+- 🔐 **TLS everywhere** — HTTPS on ALB with ACM certificate (HTTP→HTTPS redirect)
+- 🔐 **KMS encryption** for EKS secrets and RDS
+- 🔐 **IRSA** (no AWS credentials in pods)
+- 🔐 **WAF** with OWASP, SQLi, rate limiting rules
+- 🔐 **Shield Standard** (automatic DDoS protection)
+- 🔐 **Network policies** per service (gRPC port 50051 restricted to ecommerce namespace)
+- 🔐 **GitHub OIDC** (no long-lived IAM keys)
+- 🔐 **External Secrets Operator** (no secrets in Git)
+- 🔐 **Non-root containers** with read-only filesystem
+- 🔐 **gRPC reflection** enabled for dev debugging (disable in prod)

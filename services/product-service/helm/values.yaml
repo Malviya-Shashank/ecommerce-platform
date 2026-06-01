@@ -20,9 +20,15 @@ service:
   type: ClusterIP
   port: 8000
 
+# gRPC configuration (internal service-to-service communication)
+grpc:
+  enabled: true    # product-service exposes gRPC server for stock validation
+  port: 50051
+
 # Container configuration
 container:
   port: 8000
+  grpcPort: 50051
   env: []
   envFrom: []
 

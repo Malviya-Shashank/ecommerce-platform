@@ -1,5 +1,12 @@
 ################################################################################
 # HTTPRoutes for Microservices
+#
+# Hostname: Uses sslip.io wildcard pattern for dev (free, no Route53 needed)
+# After deployment, run: scripts/setup-sslip-domain.sh
+# to patch these routes with the actual ALB IP-based sslip.io domain.
+#
+# Format: ecommerce-api-<ALB-IP-with-dashes>.sslip.io
+# Example: ecommerce-api-52-66-123-45.sslip.io
 ################################################################################
 
 # User Service
@@ -12,8 +19,6 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "api.yourdomain.com"
   rules:
     - matches:
         - path:
@@ -33,8 +38,6 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "api.yourdomain.com"
   rules:
     - matches:
         - path:
@@ -54,8 +57,6 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "api.yourdomain.com"
   rules:
     - matches:
         - path:
@@ -75,8 +76,6 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "api.yourdomain.com"
   rules:
     - matches:
         - path:
@@ -96,8 +95,6 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "api.yourdomain.com"
   rules:
     - matches:
         - path:

@@ -1,6 +1,9 @@
 ################################################################################
 # HTTPRoute for Grafana - Accessed via Gateway API (NOT LoadBalancer)
 # This saves ~$18/month by not creating a separate NLB
+#
+# Dev: hostname patched by scripts/setup-sslip-domain.sh
+#      e.g., ecommerce-grafana-52-66-123-45.sslip.io
 ################################################################################
 
 apiVersion: gateway.networking.k8s.io/v1
@@ -12,9 +15,11 @@ spec:
   parentRefs:
     - name: ecommerce-gateway
       namespace: ecommerce
-  hostnames:
-    - "grafana.yourdomain.com"
   rules:
-    - backendRefs:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /grafana
+      backendRefs:
         - name: grafana
           port: 3000

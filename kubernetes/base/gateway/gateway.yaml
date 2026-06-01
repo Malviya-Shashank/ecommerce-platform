@@ -1,6 +1,13 @@
 ################################################################################
-# Gateway - Shared ALB for all services
-# This creates a single ALB shared by all HTTPRoutes
+# Gateway - Shared ALB for all services (HTTPS + HTTP)
+#
+# TLS Strategy:
+#   Dev:  Self-signed cert imported into ACM (free, no Route53 needed)
+#   Prod: ACM cert with DNS validation via Route53
+#
+# The ALB terminates HTTPS and forwards HTTP to pods internally.
+# After terraform apply, get the cert ARN: terraform output acm_certificate_arn
+# Then update the annotation below with the actual ARN.
 ################################################################################
 
 apiVersion: gateway.networking.k8s.io/v1
@@ -14,11 +21,15 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # ACM certificate ARN — patched by scripts/setup-sslip-domain.sh after terraform apply
+    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_WITH_ACM_CERT_ARN"
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
     alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
     alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
     alb.ingress.kubernetes.io/healthy-threshold-count: "2"
     alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    # SSL policy (TLS 1.2+)
+    alb.ingress.kubernetes.io/ssl-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
 spec:
   gatewayClassName: aws-alb
   listeners:
@@ -30,6 +41,5 @@ spec:
       port: 443
       tls:
         mode: Terminate
-        certificateRefs:
-          - name: ecommerce-tls
-            namespace: ecommerce
+        # The ALB controller uses the certificate-arn annotation above
+        # for TLS termination. No K8s secret needed.

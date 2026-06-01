@@ -22,7 +22,7 @@ services:
     networks:
       - ecommerce-network
 
-  # User Service (Port 8001)
+  # User Service (HTTP: 8001, gRPC client → notification-service:50051)
   user-service:
     build:
       context: ./services/user-service
@@ -30,6 +30,7 @@ services:
     container_name: user-service
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/user_service
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
     ports:
       - "8001:8000"
     depends_on:
@@ -38,7 +39,7 @@ services:
     networks:
       - ecommerce-network
 
-  # Product Service (Port 8002)
+  # Product Service (HTTP: 8002, gRPC server: 50052 → mapped from 50051)
   product-service:
     build:
       context: ./services/product-service
@@ -48,13 +49,14 @@ services:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/product_service
     ports:
       - "8002:8000"
+      - "50052:50051"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ecommerce-network
 
-  # Order Service (Port 8003)
+  # Order Service (HTTP: 8003, gRPC client → product-service + notification-service)
   order-service:
     build:
       context: ./services/order-service
@@ -62,6 +64,8 @@ services:
     container_name: order-service
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/order_service
+      - PRODUCT_SERVICE_GRPC=product-service:50051
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
     ports:
       - "8003:8000"
     depends_on:
@@ -70,7 +74,7 @@ services:
     networks:
       - ecommerce-network
 
-  # Payment Service (Port 8004)
+  # Payment Service (HTTP: 8004, gRPC client → notification-service)
   payment-service:
     build:
       context: ./services/payment-service
@@ -78,6 +82,7 @@ services:
     container_name: payment-service
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/payment_service
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
     ports:
       - "8004:8000"
     depends_on:
@@ -86,7 +91,7 @@ services:
     networks:
       - ecommerce-network
 
-  # Notification Service (Port 8005)
+  # Notification Service (HTTP: 8005, gRPC server: 50051)
   notification-service:
     build:
       context: ./services/notification-service
@@ -96,6 +101,7 @@ services:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/notification_service
     ports:
       - "8005:8000"
+      - "50051:50051"
     depends_on:
       postgres:
         condition: service_healthy

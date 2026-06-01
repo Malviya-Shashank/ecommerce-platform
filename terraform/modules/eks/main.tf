@@ -361,3 +361,34 @@ resource "aws_iam_role_policy_attachment" "ebs_csi" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
   role       = aws_iam_role.ebs_csi.name
 }
+
+################################################################################
+# EKS Access Entry for GitHub Actions OIDC Role
+# Grants cluster-admin access so CI/CD can run kubectl for ArgoCD bootstrap
+################################################################################
+
+resource "aws_eks_access_entry" "github_actions" {
+  count = var.github_actions_role_arn != "" ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_actions_role_arn
+  type          = "STANDARD"
+
+  tags = merge(var.tags, {
+    Name = "${local.cluster_name}-github-actions-access"
+  })
+}
+
+resource "aws_eks_access_policy_association" "github_actions" {
+  count = var.github_actions_role_arn != "" ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_actions_role_arn
+  policy_arn    = "arn:${data.aws_partition.current.partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.github_actions]
+}

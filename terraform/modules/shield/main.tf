@@ -1,9 +1,19 @@
 ################################################################################
-# AWS Shield Advanced Module
+# AWS Shield Module
+#
+# Shield Standard: FREE, automatic on all AWS accounts. No resources needed.
+# Shield Advanced: $3,000/month. Requires explicit aws_shield_protection.
+#
+# For dev/learning: use shield_tier = "standard" (zero cost)
+# For production:   use shield_tier = "advanced" (DDoS response team access)
+################################################################################
+
+################################################################################
+# Shield Advanced Protections (only when shield_tier = "advanced")
 ################################################################################
 
 resource "aws_shield_protection" "cloudfront" {
-  count = var.enable_shield ? 1 : 0
+  count = var.shield_tier == "advanced" ? 1 : 0
 
   name         = "${var.project_name}-${var.environment}-cloudfront-shield"
   resource_arn = var.cloudfront_distribution_arn
@@ -12,7 +22,7 @@ resource "aws_shield_protection" "cloudfront" {
 }
 
 resource "aws_shield_protection" "alb" {
-  count = var.enable_shield ? 1 : 0
+  count = var.shield_tier == "advanced" ? 1 : 0
 
   name         = "${var.project_name}-${var.environment}-alb-shield"
   resource_arn = var.alb_arn
@@ -21,7 +31,7 @@ resource "aws_shield_protection" "alb" {
 }
 
 resource "aws_shield_protection" "route53" {
-  count = var.enable_shield ? 1 : 0
+  count = var.shield_tier == "advanced" ? 1 : 0
 
   name         = "${var.project_name}-${var.environment}-route53-shield"
   resource_arn = "arn:aws:route53:::hostedzone/${var.hosted_zone_id}"
@@ -30,11 +40,11 @@ resource "aws_shield_protection" "route53" {
 }
 
 ################################################################################
-# Shield Advanced Proactive Engagement
+# Shield Advanced Proactive Engagement (only when advanced + enabled)
 ################################################################################
 
 resource "aws_shield_proactive_engagement" "main" {
-  count = var.enable_shield && var.enable_proactive_engagement ? 1 : 0
+  count = var.shield_tier == "advanced" && var.enable_proactive_engagement ? 1 : 0
 
   enabled = true
 

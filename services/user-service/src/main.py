@@ -1,6 +1,9 @@
 """
 User Service - E-Commerce Platform
 Handles user registration, authentication, and profile management.
+
+Inter-service communication:
+  - Calls notification-service via gRPC (port 50051) for password reset emails
 """
 
 from fastapi import FastAPI, HTTPException, Depends, status
@@ -13,7 +16,9 @@ import logging
 from contextlib import asynccontextmanager
 import asyncpg
 import hashlib
-import httpx
+
+import grpc
+from src.generated import notification_pb2, notification_pb2_grpc
 
 # Helper: Hash passwords with SHA-256
 def hash_password(password: str) -> str:
@@ -25,6 +30,9 @@ logger = logging.getLogger("user-service")
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user_service:password@localhost:5432/user_service")
+
+# gRPC target for notification-service (internal service-to-service)
+NOTIFICATION_SERVICE_GRPC = os.getenv("NOTIFICATION_SERVICE_GRPC", "notification-service:50051")
 
 
 @asynccontextmanager
@@ -53,10 +61,17 @@ async def lifespan(app: FastAPI):
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
+
+    # Initialize gRPC channel for notification-service
+    app.state.grpc_channel = grpc.aio.insecure_channel(NOTIFICATION_SERVICE_GRPC)
+    app.state.notification_stub = notification_pb2_grpc.NotificationServiceStub(app.state.grpc_channel)
+    logger.info(f"gRPC channel to notification-service: {NOTIFICATION_SERVICE_GRPC}")
+
     logger.info("User Service started successfully")
     yield
     # Shutdown
     logger.info("Shutting down User Service...")
+    await app.state.grpc_channel.close()
     await app.state.db_pool.close()
 
 
@@ -241,11 +256,9 @@ async def login(credentials: LoginRequest):
         return UserResponse(**user_info)
 
 
-NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8000")
-
 @app.post("/forgot-password", tags=["auth"])
 async def forgot_password(req: ForgotPasswordRequest):
-    """Generate password reset token and dispatch microservice notification email."""
+    """Generate password reset token and dispatch notification via gRPC."""
     async with app.state.db_pool.acquire() as conn:
         row = await conn.fetchrow("SELECT id, username, email FROM users WHERE email = $1 AND is_active = TRUE", req.email)
         if not row:
@@ -255,21 +268,24 @@ async def forgot_password(req: ForgotPasswordRequest):
         # Generate dummy reset token
         reset_token = f"rst_{hashlib.sha256(f'{req.email}-{datetime.utcnow()}'.encode()).hexdigest()[:16]}"
         
-        # Microservice communication: call notification-service via HTTP
+        # gRPC call to notification-service (replaces old HTTP call)
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{NOTIFICATION_SERVICE_URL}/",
-                    json={
-                        "user_id": user_data["id"],
-                        "type": "email",
-                        "subject": "Password Reset Instructions",
-                        "message": f"Hello {user_data['username']}! We received a password reset request. Click this link to reset your credentials: http://localhost:8081/?action=reset-password&token={reset_token}",
-                        "metadata": {"reset_token": reset_token}
-                    },
-                    timeout=5.0
-                )
+            grpc_request = notification_pb2.NotificationRequest(
+                user_id=user_data["id"],
+                type="email",
+                subject="Password Reset Instructions",
+                message=f"Hello {user_data['username']}! We received a password reset request. "
+                        f"Click this link to reset your credentials: "
+                        f"http://localhost:8081/?action=reset-password&token={reset_token}",
+                metadata={"reset_token": reset_token},
+            )
+            response = await app.state.notification_stub.SendNotification(
+                grpc_request, timeout=5.0
+            )
+            logger.info(f"[gRPC] Notification sent: id={response.id}, status={response.status}")
+        except grpc.aio.AioRpcError as e:
+            logger.error(f"[gRPC] Failed to dispatch reset notification: {e.code()} - {e.details()}")
         except Exception as e:
-            logger.error(f"Failed to dispatch reset notification: {e}")
+            logger.error(f"[gRPC] Unexpected error dispatching notification: {e}")
             
         return {"message": "Password reset instructions sent to your email", "token": reset_token}

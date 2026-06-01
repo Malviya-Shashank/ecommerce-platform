@@ -1,5 +1,14 @@
 ################################################################################
-# Dev Environment - Root Module (cost-optimized)
+# Dev Environment - Root Module (cost-optimized, sslip.io, Shield Standard)
+#
+# Cost strategy:
+#   - t3.medium SPOT nodes (~$30/mo vs $62/mo for m6i.large)
+#   - No Route53 hosted zone (sslip.io free domains)
+#   - No CloudFront CDN (direct ALB access)
+#   - No ACM certificates (ALB auto-generated cert)
+#   - Shield Standard (free, automatic — no Terraform resources)
+#   - Single NAT Gateway (not HA)
+#   - No VPC flow logs
 ################################################################################
 
 locals {
@@ -53,8 +62,8 @@ module "eks" {
   public_subnet_ids      = module.vpc.public_subnet_ids
   node_security_group_id = module.security_groups.eks_nodes_security_group_id
 
-  # Smaller nodes for dev
-  node_instance_types = ["m6i.large"]
+  # Cost-optimized: t3.medium SPOT instances
+  node_instance_types = ["t3.medium"]
   capacity_type       = "SPOT" # Use spot for dev
   node_desired_size   = 2
   node_min_size       = 1
@@ -63,21 +72,24 @@ module "eks" {
   # Shorter log retention
   log_retention_days = 7
 
+  # GitHub Actions OIDC role for CI/CD kubectl access
+  github_actions_role_arn = module.github_oidc.github_actions_role_arn
+
   tags = local.common_tags
 }
 
 module "rds" {
   source = "../../modules/rds"
 
-  project_name          = local.project_name
-  environment           = local.environment
-  instance_class        = "db.t4g.medium" # Smaller for dev
-  allocated_storage     = 20
-  max_allocated_storage = 50
-  multi_az              = false # No Multi-AZ in dev
+  project_name            = local.project_name
+  environment             = local.environment
+  instance_class          = "db.t4g.medium" # Smaller for dev
+  allocated_storage       = 20
+  max_allocated_storage   = 50
+  multi_az                = false # No Multi-AZ in dev
   backup_retention_period = 7
-  db_subnet_group_name  = module.vpc.db_subnet_group_name
-  rds_security_group_id = module.security_groups.rds_security_group_id
+  db_subnet_group_name    = module.vpc.db_subnet_group_name
+  rds_security_group_id   = module.security_groups.rds_security_group_id
 
   service_databases = [
     "user-service",
@@ -114,8 +126,22 @@ module "irsa" {
   project_name       = local.project_name
   rds_kms_key_arn    = module.rds.kms_key_arn
   loki_s3_bucket_arn = aws_s3_bucket.loki_irsa.arn
-  hosted_zone_id     = var.hosted_zone_id
+  hosted_zone_id     = "" # No Route53 zone in dev (using sslip.io)
   tags               = local.common_tags
+}
+
+################################################################################
+# Self-Signed TLS Certificate (FREE — imported into ACM)
+# For dev: self-signed cert enables HTTPS on ALB without Route53/DNS validation
+# For prod: use the regular ACM module with DNS validation via Route53
+################################################################################
+
+module "acm_self_signed" {
+  source = "../../modules/acm-self-signed"
+
+  project_name = local.project_name
+  environment  = local.environment
+  tags         = local.common_tags
 }
 
 module "helm_releases" {
@@ -137,6 +163,23 @@ module "helm_releases" {
   tags = local.common_tags
 }
 
+################################################################################
+# Shield Standard (FREE — automatic on all AWS accounts, no resources needed)
+# Shield Advanced ($3000/mo) is only used in production.
+# The shield module is still called here for visibility & documentation,
+# but with shield_tier = "standard" it creates ZERO AWS resources.
+################################################################################
+
+module "shield" {
+  source = "../../modules/shield"
+
+  project_name = local.project_name
+  environment  = local.environment
+  shield_tier  = "standard" # Free, automatic DDoS protection
+
+  tags = local.common_tags
+}
+
 # ECR repos (shared across environments, only create in one place)
 # Dev uses the same ECR repos created by production
 
@@ -154,3 +197,15 @@ module "github_oidc" {
   github_repo  = var.github_repo
   tags         = local.common_tags
 }
+
+################################################################################
+# NOTE: The following modules are NOT included in dev to save costs:
+#
+# - module "route53"     → Using sslip.io free domains instead ($0.50/mo saved)
+# - module "acm" (DNS)   → Using self-signed cert instead (no Route53 needed)
+# - module "cloudfront"  → Traffic goes directly to ALB (no CDN)
+#
+# TLS is enabled via self-signed cert imported into ACM (module.acm_self_signed)
+# The ALB terminates HTTPS using this cert. Browsers will show a warning
+# (self-signed) but the full TLS architecture is preserved.
+################################################################################

@@ -2,6 +2,8 @@
 
 This guide provides the exact terminal commands required to launch, monitor, test, and troubleshoot the e-commerce microservices platform in both your local environment (Docker Compose) and the AWS Cloud (EKS/Terraform).
 
+> **Note:** Cloud infrastructure deployment is fully automated via GitHub Actions. The commands below are for **local development**, **debugging**, and **manual overrides** only.
+
 ---
 
 ## 🐳 1. Local Environment (Docker Compose)
@@ -42,39 +44,73 @@ docker compose down -v
 
 ### B. Health & Readiness Verification
 
-Run these `curl` commands to confirm the network gateway and databases are active:
-
 ```bash
 # 🖥️ Frontend Web Portal (Nginx static web server)
 curl -I http://localhost:8081
 
-# 👤 User Service (Port 8001)
+# 👤 User Service (HTTP: 8001)
 curl -s http://localhost:8001/healthz
 curl -s http://localhost:8001/readyz
 
-# 🛍️ Product Catalog (Port 8002)
+# 🛍️ Product Catalog (HTTP: 8002, gRPC: 50052)
 curl -s http://localhost:8002/healthz
 curl -s http://localhost:8002/readyz
 
-# 📦 Order Service (Port 8003)
+# 📦 Order Service (HTTP: 8003)
 curl -s http://localhost:8003/healthz
 curl -s http://localhost:8003/readyz
 
-# 💳 Payment Service (Port 8004)
+# 💳 Payment Service (HTTP: 8004)
 curl -s http://localhost:8004/healthz
 curl -s http://localhost:8004/readyz
 
-# 🔔 Notification Service (Port 8005)
+# 🔔 Notification Service (HTTP: 8005, gRPC: 50051)
 curl -s http://localhost:8005/healthz
 curl -s http://localhost:8005/readyz
 ```
 
 ---
 
-### C. Direct Backend API Testing (CLI Mocking)
+### C. gRPC Testing (Local)
+
+#### Install grpcurl (if not installed)
+```bash
+brew install grpcurl  # macOS
+```
+
+#### List gRPC services (notification-service)
+```bash
+grpcurl -plaintext localhost:50051 list
+```
+
+#### List gRPC services (product-service)
+```bash
+grpcurl -plaintext localhost:50052 list
+```
+
+#### Test notification via gRPC
+```bash
+grpcurl -plaintext -d '{
+  "user_id": 1,
+  "type": "email",
+  "subject": "Test Notification",
+  "message": "Hello from gRPC!"
+}' localhost:50051 ecommerce.notification.NotificationService/SendNotification
+```
+
+#### Test stock check via gRPC
+```bash
+grpcurl -plaintext -d '{
+  "product_id": 1,
+  "requested_quantity": 2
+}' localhost:50052 ecommerce.product.ProductService/CheckStock
+```
+
+---
+
+### D. Direct Backend API Testing (REST)
 
 #### 1. Real User Authentication (Login)
-Sends credentials to `user-service` to verify password hashing (using the seeded developer account):
 ```bash
 curl -s -X POST http://localhost:8001/login \
   -H "Content-Type: application/json" \
@@ -82,30 +118,30 @@ curl -s -X POST http://localhost:8001/login \
 ```
 
 #### 2. Create User Account (Registration)
-Registers a new customer. The user-service hashes the password before storing:
 ```bash
 curl -s -X POST http://localhost:8001/ \
   -H "Content-Type: application/json" \
   -d '{"email": "test.user@example.com", "username": "test_user", "full_name": "Test User", "password": "mypassword456"}'
 ```
 
-#### 3. Real Password Reset Flow
-Generates a token and triggers microservice-to-microservice network integration:
+#### 3. Password Reset (Triggers gRPC notification)
 ```bash
+# This triggers user-service → notification-service gRPC call
 curl -s -X POST http://localhost:8001/forgot-password \
   -H "Content-Type: application/json" \
   -d '{"email": "sarah.manager@example.com"}'
 ```
 
-#### 4. Fetch Sent Notification Alerts
-Verify the password reset instruction or purchase receipt email was queued inside the `notification-service`:
+#### 4. Verify Notification Was Sent (via gRPC)
 ```bash
 curl -s http://localhost:8005/user/2
 ```
 
-#### 5. Submit an Order
-Create a new order for a catalog laptop (Product ID `1`):
+#### 5. Submit an Order (Triggers gRPC stock check + notification)
 ```bash
+# This triggers:
+#   1. order-service → product-service gRPC CheckStock
+#   2. order-service → notification-service gRPC SendNotification
 curl -s -X POST http://localhost:8003/ \
   -H "Content-Type: application/json" \
   -d '{
@@ -126,49 +162,49 @@ curl -s -X POST http://localhost:8003/ \
 
 ## ☁️ 2. Cloud Environment (AWS EKS & Terraform)
 
-### A. Infrastructure Provisioning (IaC)
+### 🤖 A. Automated Deployment (GitHub Actions — Primary Method)
 
-Navigate to the target environment directory (e.g. `production` or `dev`):
+> **Infrastructure and applications are deployed automatically on every push to `main`.**
 
-```bash
-cd terraform/environments/production
+```mermaid
+flowchart LR
+    Push["git push main"] --> TF["Terraform Apply"] --> Helm["Helm Charts"] --> Argo["ArgoCD Sync"]
+    style Push fill:#3b82f6,stroke:#fff,color:#fff
+    style Argo fill:#8b5cf6,stroke:#fff,color:#fff
 ```
 
-#### 1. Initialize S3 Backend
-Initializes lockfile state configuration (wiping the DynamoDB state locks requirement):
+**To trigger a deployment, simply push:**
 ```bash
-terraform init
-```
-
-#### 2. Dry Run Plan Verification
-Generates an audit trail of infrastructure changes:
-```bash
-terraform plan -out=tfplan.binary
-```
-
-#### 3. Apply Production Infrastructure
-```bash
-terraform apply tfplan.binary
+git push origin main
 ```
 
 ---
 
-### B. EKS Cluster Operations & GitOps Bootstrapping
+### 🔧 B. Manual Override (One-Time Setup or Debugging)
 
-#### 1. Update Kubeconfig
-Connect local `kubectl` to EKS:
+#### 1. Create Terraform State Backend (One-Time)
 ```bash
-aws eks update-kubeconfig --name ecommerce-production-eks --region ap-south-1
+chmod +x scripts/setup.sh
+./scripts/setup.sh ecommerce ap-south-1
 ```
 
-#### 2. Apply Kubernetes Gateway API Routing Manifests
+#### 2. Manual Terraform Apply (if needed)
 ```bash
-kubectl apply -f kubernetes/base/
+cd terraform/environments/dev
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
 ```
 
-#### 3. Deploy Platform via GitOps App-of-Apps
+#### 3. Configure sslip.io + TLS (After Terraform Apply)
 ```bash
-kubectl apply -f argocd/app-of-apps.yaml
+# Updates kubeconfig, patches Gateway with ACM cert, prints URLs
+./scripts/setup-sslip-domain.sh
+```
+
+#### 4. Update Kubeconfig (for local kubectl access)
+```bash
+aws eks update-kubeconfig --name ecommerce-dev-eks --region ap-south-1
 ```
 
 ---
@@ -180,22 +216,68 @@ kubectl apply -f argocd/app-of-apps.yaml
 kubectl get pods -A
 ```
 
-#### Check EKS Gateway APIs Routing Config
+#### Check Platform Services
 ```bash
-kubectl get gateways,httproutes -n default
+kubectl get pods -n argocd                # ArgoCD
+kubectl get pods -n monitoring            # Prometheus, Grafana, Loki
+kubectl get pods -n ecommerce             # Application Pods
+kubectl get pods -n kube-system           # ALB Controller, Metrics Server
+kubectl get pods -n cert-manager          # Cert Manager
+kubectl get pods -n external-secrets      # External Secrets Operator
 ```
 
-#### Inspect Live Container Logs (EKS E-commerce app)
+#### Check Gateway & Routes
 ```bash
-kubectl logs -l app=user-service -n default --tail=100 -f
+kubectl get gateways,httproutes -A
 ```
 
-#### Inspect AWS External Secrets Configuration
+#### Check TLS Certificate
 ```bash
-kubectl get externalsecrets,secretstore -n default
+# Verify ACM cert is attached to ALB
+kubectl describe gateway ecommerce-gateway -n ecommerce | grep certificate
+terraform -chdir=terraform/environments/dev output acm_certificate_arn
+```
+
+#### Check gRPC Services (via port-forward)
+```bash
+# Notification service gRPC
+kubectl port-forward svc/notification-service 50051:50051 -n ecommerce
+grpcurl -plaintext localhost:50051 list
+
+# Product service gRPC
+kubectl port-forward svc/product-service 50052:50051 -n ecommerce
+grpcurl -plaintext localhost:50052 list
+```
+
+#### Check ArgoCD Application Sync Status
+```bash
+kubectl get applications -n argocd
+```
+
+#### Inspect Live Container Logs
+```bash
+kubectl logs -l app=user-service -n ecommerce --tail=100 -f
 ```
 
 #### Force ArgoCD Sync (via kubectl)
 ```bash
 kubectl patch application app-of-apps -n argocd --type merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+```
+
+---
+
+### D. Proto & gRPC Development
+
+#### Regenerate gRPC Python Stubs (after changing .proto files)
+```bash
+cd services/proto
+bash gen_proto.sh
+```
+
+#### Verify Generated Stubs
+```bash
+for svc in user-service product-service order-service payment-service notification-service; do
+  echo "=== $svc ==="
+  ls -la services/$svc/src/generated/
+done
 ```

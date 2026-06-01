@@ -1,7 +1,13 @@
 ################################################################################
-# Multi-stage Dockerfile for FastAPI Microservice
+# Multi-stage Dockerfile for FastAPI Microservice (gRPC client only)
 # Stage 1: Builder - install dependencies
 # Stage 2: Runtime - minimal production image
+#
+# Ports:
+#   8000  - FastAPI REST API (external/client-facing)
+#
+# Note: This service is a gRPC CLIENT (calls notification-service)
+#       It does not run a gRPC server itself.
 ################################################################################
 
 # ── Builder Stage ────────────────────────────────────────────────────────────
@@ -29,7 +35,7 @@ WORKDIR /app
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application code
+# Copy application code and generated gRPC stubs
 COPY src/ ./src/
 
 # Set ownership
